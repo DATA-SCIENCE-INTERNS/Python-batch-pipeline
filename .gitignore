@@ -1,0 +1,35 @@
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE files
+.vscode/
+.idea/
+
+# Logs
+logs/*
+!logs/.gitkeep
+
+# Bronze data
+data/bronze/*
+!data/bronze/yellow/
+!data/bronze/green/
+!data/bronze/yellow/.gitkeep
+!data/bronze/green/.gitkeep
+
+# Operating system files
+.DS_Store
+Thumbs.db
