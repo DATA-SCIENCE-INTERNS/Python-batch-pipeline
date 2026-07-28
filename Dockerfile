@@ -1,19 +1,18 @@
-FROM python:3.11-slim
+# Dockerfile
+FROM python:3.12-slim
 
 WORKDIR /app
 
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
+# Layer caching: dependencies change rarely, code changes often
 COPY requirements.txt .
-
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY taxi_pipeline ./taxi_pipeline
-COPY sql ./sql
+COPY taxi_pipeline/ taxi_pipeline/
 
-RUN mkdir -p /app/data/bronze/yellow
-RUN mkdir -p /app/data/bronze/green
-RUN mkdir -p /app/logs
+RUN groupadd --system app && useradd --system --gid app --home /app app \
+    && chown -R app:app /app
 
-CMD ["python", "-m", "taxi_pipeline.main"]
+USER app
+
+ENTRYPOINT ["python", "-m", "taxi_pipeline"]
+CMD ["--help"]

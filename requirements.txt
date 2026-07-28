@@ -5,3 +5,4 @@ SQLAlchemy
 psycopg[binary]
 python-dotenv
 pytest
+python-dotenv
