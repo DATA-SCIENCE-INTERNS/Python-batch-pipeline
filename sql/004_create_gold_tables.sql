@@ -1,4 +1,4 @@
-#Creating gold tables for taxi data ingestion
+--Creating gold tables for taxi data ingestion
 CREATE TABLE IF NOT EXISTS gold.yellow_trips (
     trip_key              TEXT        PRIMARY KEY,
     vendor_id             INT,
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS gold.green_trips (
     LIKE gold.yellow_trips INCLUDING ALL
 );
 
-#reporting layer on top of gold: monthly revenue summary.
+--reporting layer on top of gold: monthly revenue summary.
 CREATE MATERIALIZED VIEW IF NOT EXISTS gold.monthly_summary AS
 SELECT 'yellow' AS taxi_type, source_year, source_month,
        COUNT(*) AS trips,
