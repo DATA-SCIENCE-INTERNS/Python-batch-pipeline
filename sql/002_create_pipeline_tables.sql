@@ -1,4 +1,4 @@
-#Create pipeline tables for taxi data ingestion
+-- Create pipeline tables for taxi data ingestion
 
 CREATE TABLE IF NOT EXISTS pipeline.batch_runs (
     run_id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

@@ -1,4 +1,4 @@
-#Creating silver tables for taxi data ingestion
+-- Creating silver tables for taxi data ingestion
 
 CREATE TABLE IF NOT EXISTS silver.trips (
     trip_key              TEXT        NOT NULL,
@@ -21,8 +21,8 @@ CREATE TABLE IF NOT EXISTS silver.trips (
     improvement_surcharge NUMERIC(10,2),
     total_amount          NUMERIC(10,2),
     congestion_surcharge  NUMERIC(10,2),
-    airport_fee           NUMERIC(10,2),   #yellow 
-    trip_type             INT,             #green 
+    airport_fee           NUMERIC(10,2),   --yellow 
+    trip_type             INT,             --green 
     source_file           TEXT        NOT NULL,
     source_year           INT         NOT NULL,
     source_month          INT         NOT NULL,
