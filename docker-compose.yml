@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: nyc_taxi_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d   # runs 001→004 on first initialization
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nyc_taxi_pipeline
+    profiles: ["tools"]          # excluded from plain `docker compose up`
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      BRONZE_DATA_PATH: /app/data/bronze
+      CHUNK_SIZE: ${CHUNK_SIZE:-50000}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./taxi_pipeline:/app/taxi_pipeline
+      - ./data:/app/data
+      - ./logs:/app/logs
+    working_dir: /app
+
+volumes:
+  postgres_data:
