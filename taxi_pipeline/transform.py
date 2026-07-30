@@ -9,6 +9,7 @@ explicitly (never trusting Pandas inference), adds lineage metadata, and
 computes a deterministic trip_key used for deduplication.
 """
 import hashlib
+import json
 import logging
 
 import pandas as pd
@@ -23,6 +24,7 @@ YELLOW_RENAMES = {
     "RatecodeID": "ratecode_id",
     "PULocationID": "pu_location_id",
     "DOLocationID": "do_location_id",
+    "Airport_fee": "airport_fee",
 }
 GREEN_RENAMES = {
     "lpep_pickup_datetime": "pickup_datetime",
@@ -110,8 +112,10 @@ def normalize_chunk(df: pd.DataFrame, taxi_type: str, source_file: str,
             df[col] = pd.NA
         if dtype.startswith("datetime"):
             df[col] = pd.to_datetime(df[col], errors="coerce")
+        elif dtype in {"Int64", "float64"}:
+            df[col] = pd.to_numeric(df[col], errors="coerce").astype(dtype)
         else:
-            df[col] = df[col].astype(dtype, errors="ignore")
+            df[col] = df[col].astype(dtype)
 
     df = df[list(CANONICAL_DTYPES)]  # drop extras, fix column order
 
@@ -124,3 +128,61 @@ def normalize_chunk(df: pd.DataFrame, taxi_type: str, source_file: str,
 
     df["trip_key"] = _compute_trip_key(df, taxi_type)
     return df
+
+
+def validate_chunk(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split a normalized chunk into valid and rejected records.
+
+    A rejected row retains its trip key and a compact JSON representation so
+    the original problem can be investigated without stopping the whole batch.
+    """
+    reasons = pd.Series("", index=df.index, dtype="string")
+
+    def reject(mask: pd.Series, reason: str) -> None:
+        nonlocal reasons
+        reasons = reasons.mask(mask & reasons.eq(""), reason)
+        reasons = reasons.mask(mask & reasons.ne("") & ~reasons.str.contains(reason),
+                               reasons + "; " + reason)
+
+    reject(df["pickup_datetime"].isna(), "missing pickup_datetime")
+    reject(df["dropoff_datetime"].isna(), "missing dropoff_datetime")
+    reject(
+        df["pickup_datetime"].notna()
+        & df["dropoff_datetime"].notna()
+        & (df["dropoff_datetime"] < df["pickup_datetime"]),
+        "dropoff before pickup",
+    )
+    reject(df["pu_location_id"].isna(), "missing pickup location")
+    reject(df["do_location_id"].isna(), "missing dropoff location")
+    reject(df["trip_distance"].isna(), "missing trip distance")
+    reject(df["trip_distance"].notna() & (df["trip_distance"] < 0),
+           "negative trip distance")
+    reject(df["fare_amount"].isna(), "missing fare amount")
+    reject(df["total_amount"].isna(), "missing total amount")
+    reject(df["passenger_count"].notna() & (df["passenger_count"] < 0),
+           "negative passenger count")
+
+    rejected_mask = reasons.ne("")
+    valid = df.loc[~rejected_mask].copy()
+    rejected_source = df.loc[rejected_mask].copy()
+
+    rejected_rows = []
+    for index, row in rejected_source.iterrows():
+        serializable = {
+            key: None if pd.isna(value) else (
+                value.isoformat() if hasattr(value, "isoformat") else value
+            )
+            for key, value in row.items()
+        }
+        rejected_rows.append(
+            {
+                "trip_key": row["trip_key"],
+                "reject_reason": reasons.loc[index],
+                "record": json.dumps(serializable, default=str),
+            }
+        )
+
+    return valid, pd.DataFrame(
+        rejected_rows,
+        columns=["trip_key", "reject_reason", "record"],
+    )
