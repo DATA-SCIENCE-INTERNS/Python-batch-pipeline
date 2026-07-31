@@ -105,9 +105,15 @@ def run_batch(taxi_type: TaxiType, year: int, month: int, *,
             rejected, promoted,
         )
     except Exception as exc:
-        conn.rollback()
+        try:
+            conn.rollback()
+        except Exception:
+            # A database restart closes the socket and has already rolled back
+            # the server-side transaction.
+            pass
         error = str(exc)[:4_000]
-        with conn.cursor() as cur:
+        status_conn = conn if not conn.closed else get_connection(settings)
+        with status_conn.cursor() as cur:
             if file_id is None:
                 cur.execute(
                     """
@@ -123,7 +129,9 @@ def run_batch(taxi_type: TaxiType, year: int, month: int, *,
                     cur, run_id, file_id, "failed",
                     extracted, loaded, rejected, error,
                 )
-        conn.commit()
+        status_conn.commit()
+        if status_conn is not conn:
+            status_conn.close()
         raise
     finally:
         conn.close()

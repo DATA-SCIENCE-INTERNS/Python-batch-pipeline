@@ -1,10 +1,14 @@
 from contextlib import contextmanager
+import logging
+import time
 from typing import Iterable
 
 import psycopg2
 from psycopg2.extras import execute_values
 
 from .config import Settings
+
+log = logging.getLogger(__name__)
 
 SILVER_COLUMNS = [
     "trip_key", "taxi_type", "vendor_id", "pickup_datetime",
@@ -17,10 +21,30 @@ SILVER_COLUMNS = [
 ]
 
 
-def get_connection(settings: Settings):
-    conn = psycopg2.connect(settings.dsn)
-    conn.autocommit = False
-    return conn
+def get_connection(settings: Settings, attempts: int = 24,
+                   delay_seconds: int = 5):
+    """Connect to PostgreSQL, waiting through a temporary restart."""
+    last_error = None
+    for attempt in range(1, attempts + 1):
+        try:
+            conn = psycopg2.connect(
+                settings.dsn,
+                connect_timeout=5,
+                application_name="nyc_taxi_batch_pipeline",
+            )
+            conn.autocommit = False
+            return conn
+        except psycopg2.OperationalError as error:
+            last_error = error
+            if attempt == attempts:
+                break
+            log.warning(
+                "PostgreSQL unavailable; retrying connection in %ss "
+                "(attempt %s/%s)",
+                delay_seconds, attempt, attempts,
+            )
+            time.sleep(delay_seconds)
+    raise last_error
 
 
 @contextmanager

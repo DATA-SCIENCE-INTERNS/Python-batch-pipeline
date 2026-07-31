@@ -3,6 +3,7 @@ import logging
 import os
 
 import click
+import psycopg2
 
 from taxi_pipeline.config import load_settings
 from taxi_pipeline.pipeline import run_batch
@@ -43,26 +44,46 @@ def execute_batches(taxi_types, batches, overwrite: bool) -> None:
     failures = []
     for taxi_type in taxi_types:
         for year, month in batches:
-            try:
-                result = run_batch(
-                    taxi_type=taxi_type,
-                    year=year,
-                    month=month,
-                    overwrite=overwrite,
-                )
-                click.echo(
-                    f"[ok] {taxi_type} {year}-{month:02d} run={result.run_id} "
-                    f"extracted={result.extracted_rows} "
-                    f"loaded={result.loaded_rows} "
-                    f"rejected={result.rejected_rows} "
-                    f"promoted={result.promoted_rows}"
-                )
-            except Exception as error:
-                click.echo(
-                    f"[error] {taxi_type} {year}-{month:02d}: {error}",
-                    err=True,
-                )
-                failures.append((taxi_type, year, month))
+            for attempt in range(1, 4):
+                try:
+                    result = run_batch(
+                        taxi_type=taxi_type,
+                        year=year,
+                        month=month,
+                        overwrite=overwrite,
+                    )
+                    click.echo(
+                        f"[ok] {taxi_type} {year}-{month:02d} "
+                        f"run={result.run_id} "
+                        f"extracted={result.extracted_rows} "
+                        f"loaded={result.loaded_rows} "
+                        f"rejected={result.rejected_rows} "
+                        f"promoted={result.promoted_rows}"
+                    )
+                    break
+                except (psycopg2.OperationalError,
+                        psycopg2.InterfaceError) as error:
+                    if attempt == 3:
+                        click.echo(
+                            f"[error] {taxi_type} {year}-{month:02d}: "
+                            f"{error}",
+                            err=True,
+                        )
+                        failures.append((taxi_type, year, month))
+                    else:
+                        click.echo(
+                            f"[retry] {taxi_type} {year}-{month:02d} "
+                            f"after database interruption "
+                            f"(attempt {attempt}/3)",
+                            err=True,
+                        )
+                except Exception as error:
+                    click.echo(
+                        f"[error] {taxi_type} {year}-{month:02d}: {error}",
+                        err=True,
+                    )
+                    failures.append((taxi_type, year, month))
+                    break
     if failures:
         raise click.ClickException(f"{len(failures)} failed batch(es): {failures}")
 
