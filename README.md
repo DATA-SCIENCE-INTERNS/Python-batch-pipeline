@@ -128,6 +128,18 @@ Database integration tests are still a documented gap.
 For monitoring, table inspection, interruption recovery, and common errors,
 see the [Operations runbook](docs/operations.md).
 
+## Streamlit dashboard
+
+The read-only dashboard presents pipeline health, run history, data quality,
+Gold analytics, and file lineage. Start it with:
+
+```powershell
+docker compose up -d dashboard
+```
+
+Open `http://localhost:8501`. The dashboard queries PostgreSQL through the
+internal Compose network and never launches ingestion jobs.
+
 Useful status query:
 
 ```powershell
