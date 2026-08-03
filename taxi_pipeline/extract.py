@@ -13,6 +13,7 @@ def build_download_url(
     taxi_type: TaxiType,
     year: int,
     month: int,
+    base_url: str = BASE_URL,
 ) -> str:
     """Create the official NYC TLC download URL."""
 
@@ -24,7 +25,7 @@ def build_download_url(
 
     filename = f"{taxi_type}_tripdata_{year}-{month:02d}.parquet"
 
-    return f"{BASE_URL}/{filename}"
+    return f"{base_url.rstrip('/')}/{filename}"
 
 
 def build_bronze_path(
@@ -52,6 +53,7 @@ def download_trip_data(
     month: int,
     bronze_directory: str | Path = "data/bronze",
     overwrite: bool = False,
+    base_url: str = BASE_URL,
 ) -> Path:
     """Download one monthly taxi dataset."""
 
@@ -59,6 +61,7 @@ def download_trip_data(
         taxi_type=taxi_type,
         year=year,
         month=month,
+        base_url=base_url,
     )
 
     destination = build_bronze_path(

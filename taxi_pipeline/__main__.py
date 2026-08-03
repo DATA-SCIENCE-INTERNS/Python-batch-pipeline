@@ -1,21 +1,22 @@
-"""
-NYC TLC Taxi Data Pipeline — CLI entry point.
-
-Usage:
-    python -m taxi_pipeline ingest --taxi-type yellow --year 2025 --month 1
-    python -m taxi_pipeline backfill --taxi-type both --start 2025-01 --end 2025-03
-"""
-import sys
+"""Command-line interface for the NYC TLC taxi batch pipeline."""
+import logging
+import os
 
 import click
+import psycopg2
 
-from taxi_pipeline.extract import download_trip_data
+from taxi_pipeline.config import load_settings
+from taxi_pipeline.pipeline import run_batch
 
 
 def month_range(start: str, end: str):
-    """Yield (year, month) tuples from 'YYYY-MM' start to end, inclusive."""
+    """Yield inclusive (year, month) tuples from two YYYY-MM values."""
     sy, sm = map(int, start.split("-"))
     ey, em = map(int, end.split("-"))
+    if not (1 <= sm <= 12 and 1 <= em <= 12):
+        raise click.BadParameter("Dates must use valid months in YYYY-MM format.")
+    if (sy, sm) > (ey, em):
+        raise click.BadParameter("--start must not be later than --end.")
     y, m = sy, sm
     while (y, m) <= (ey, em):
         yield y, m
@@ -32,7 +33,59 @@ def resolve_taxi_types(taxi_type: str) -> list[str]:
 @click.group()
 def cli():
     """NYC TLC Taxi Data Pipeline CLI."""
-    pass
+    load_settings()
+    logging.basicConfig(
+        level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper()),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
+
+def execute_batches(taxi_types, batches, overwrite: bool) -> None:
+    failures = []
+    for taxi_type in taxi_types:
+        for year, month in batches:
+            for attempt in range(1, 4):
+                try:
+                    result = run_batch(
+                        taxi_type=taxi_type,
+                        year=year,
+                        month=month,
+                        overwrite=overwrite,
+                    )
+                    click.echo(
+                        f"[ok] {taxi_type} {year}-{month:02d} "
+                        f"run={result.run_id} "
+                        f"extracted={result.extracted_rows} "
+                        f"loaded={result.loaded_rows} "
+                        f"rejected={result.rejected_rows} "
+                        f"promoted={result.promoted_rows}"
+                    )
+                    break
+                except (psycopg2.OperationalError,
+                        psycopg2.InterfaceError) as error:
+                    if attempt == 3:
+                        click.echo(
+                            f"[error] {taxi_type} {year}-{month:02d}: "
+                            f"{error}",
+                            err=True,
+                        )
+                        failures.append((taxi_type, year, month))
+                    else:
+                        click.echo(
+                            f"[retry] {taxi_type} {year}-{month:02d} "
+                            f"after database interruption "
+                            f"(attempt {attempt}/3)",
+                            err=True,
+                        )
+                except Exception as error:
+                    click.echo(
+                        f"[error] {taxi_type} {year}-{month:02d}: {error}",
+                        err=True,
+                    )
+                    failures.append((taxi_type, year, month))
+                    break
+    if failures:
+        raise click.ClickException(f"{len(failures)} failed batch(es): {failures}")
 
 
 @cli.command()
@@ -42,26 +95,15 @@ def cli():
     required=True,
 )
 @click.option("--year", type=int, required=True)
-@click.option("--month", type=int, required=True)
-def ingest(taxi_type, year, month):
-    """Ingest one monthly batch for one or both taxi types."""
-    taxi_types = resolve_taxi_types(taxi_type)
-    failures = []
-
-    for t in taxi_types:
-        try:
-            path = download_trip_data(taxi_type=t, year=year, month=month)
-            click.echo(f"[ok] {t} {year}-{month:02d} -> {path}")
-        except FileNotFoundError as e:
-            click.echo(f"[skipped] {e}")
-            failures.append((t, year, month))
-        except Exception as e:
-            click.echo(f"[error] {t} {year}-{month:02d}: {e}")
-            failures.append((t, year, month))
-
-    if failures:
-        click.echo(f"\n{len(failures)} failure(s): {failures}")
-        sys.exit(1)
+@click.option("--month", type=click.IntRange(1, 12), required=True)
+@click.option("--overwrite", is_flag=True, help="Download the Bronze file again.")
+def ingest(taxi_type, year, month, overwrite):
+    """Process one monthly batch for one or both taxi types."""
+    execute_batches(
+        resolve_taxi_types(taxi_type),
+        [(year, month)],
+        overwrite,
+    )
 
 
 @cli.command()
@@ -72,29 +114,12 @@ def ingest(taxi_type, year, month):
 )
 @click.option("--start", required=True, help="YYYY-MM")
 @click.option("--end", required=True, help="YYYY-MM")
-def backfill(taxi_type, start, end):
-    """Backfill a range of months for one or both taxi types."""
-    taxi_types = resolve_taxi_types(taxi_type)
-    failures = []
-
-    for t in taxi_types:
-        for year, month in month_range(start, end):
-            try:
-                path = download_trip_data(taxi_type=t, year=year, month=month)
-                click.echo(f"[ok] {t} {year}-{month:02d} -> {path}")
-            except FileNotFoundError as e:
-                click.echo(f"[skipped] {e}")
-                failures.append((t, year, month))
-            except Exception as e:
-                click.echo(f"[error] {t} {year}-{month:02d}: {e}")
-                failures.append((t, year, month))
-
-    if failures:
-        click.echo(f"\n{len(failures)} failure(s): {failures}")
-        sys.exit(1)
+@click.option("--overwrite", is_flag=True, help="Download Bronze files again.")
+def backfill(taxi_type, start, end, overwrite):
+    """Process an inclusive month range for one or both taxi types."""
+    batches = list(month_range(start, end))
+    execute_batches(resolve_taxi_types(taxi_type), batches, overwrite)
 
 
 if __name__ == "__main__":
     cli()
-
-    

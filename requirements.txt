@@ -1,9 +1,8 @@
 pandas
 pyarrow
 requests
-SQLAlchemy
-psycopg[binary]
 python-dotenv
 pytest
-python-dotenv
 click
+psycopg2-binary
+python-docx
