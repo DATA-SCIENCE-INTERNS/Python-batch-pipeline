@@ -137,7 +137,7 @@ Gold analytics, and file lineage. Start it with:
 docker compose up -d dashboard
 ```
 
-Open `http://localhost:8501`. The dashboard queries PostgreSQL through the
+Open `http://localhost:8502`. The dashboard queries PostgreSQL through the
 internal Compose network and never launches ingestion jobs.
 
 Useful status query:

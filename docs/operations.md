@@ -24,6 +24,118 @@ Maintenance database: nyc_taxi
 Username: taxi_user
 ```
 
+## Run the Streamlit dashboard
+
+The dashboard is a read-only reporting layer. It queries PostgreSQL but does
+not start, stop, or modify ingestion jobs.
+
+Start PostgreSQL and the dashboard from the project directory:
+
+```powershell
+cd "C:\Users\ekica\Documents\python pipeline\Python-batch-pipeline"
+docker compose up -d --build dashboard
+```
+
+Compose waits for PostgreSQL to become healthy before starting Streamlit.
+Open the dashboard at:
+
+```text
+http://localhost:8502
+```
+
+Check service state:
+
+```powershell
+docker compose ps
+```
+
+Expected port mappings:
+
+```text
+nyc_taxi_dashboard   0.0.0.0:8502->8501/tcp
+nyc_taxi_postgres    0.0.0.0:5433->5432/tcp
+```
+
+Follow dashboard logs:
+
+```powershell
+docker compose logs -f dashboard
+```
+
+`Ctrl+C` stops following logs; it does not stop the dashboard.
+
+Check Streamlit's health endpoint:
+
+```powershell
+(Invoke-WebRequest -UseBasicParsing `
+  -Uri "http://127.0.0.1:8502/_stcore/health").Content
+```
+
+Expected response:
+
+```text
+ok
+```
+
+Restart or stop only the dashboard:
+
+```powershell
+docker compose restart dashboard
+docker compose stop dashboard
+```
+
+### Dashboard database addresses
+
+The correct address depends on where Streamlit runs:
+
+| Streamlit location | PostgreSQL host | PostgreSQL port |
+| --- | --- | --- |
+| Docker Compose dashboard | `postgres` | `5432` |
+| Windows host process | `127.0.0.1` | `5433` |
+
+The Docker dashboard receives its settings from `docker-compose.yml`. Do not
+change its host to `localhost`; inside the dashboard container, `localhost`
+means the dashboard container itself.
+
+### Dashboard port conflict
+
+The project publishes Streamlit on host port `8502` because another Python
+process on this workstation uses `8501`. If `8502` is later occupied, choose a
+free host port in `.env`:
+
+```dotenv
+STREAMLIT_PORT=8503
+```
+
+Then recreate the dashboard and open the new port:
+
+```powershell
+docker compose up -d --force-recreate dashboard
+```
+
+### Dashboard cannot reach PostgreSQL
+
+Inspect both services and their logs:
+
+```powershell
+docker compose ps
+docker compose logs --tail 100 dashboard postgres
+```
+
+Confirm the dashboard can query the database from inside its container:
+
+```powershell
+docker exec nyc_taxi_dashboard python -c `
+  "from dashboard.database import query_dataframe; print(query_dataframe('SELECT current_database()').to_dict('records'))"
+```
+
+Expected database name: `nyc_taxi`.
+
+The Overview page distinguishes active pipeline database sessions from stale
+`running` metadata. A stale badge means the audit table contains a running row
+older than six hours but PostgreSQL has no corresponding pipeline session.
+Investigate container and database logs before changing that audit record.
+
 ## Run and monitor a backfill
 
 Start a foreground job:

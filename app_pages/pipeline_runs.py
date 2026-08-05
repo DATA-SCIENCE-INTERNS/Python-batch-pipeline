@@ -22,12 +22,22 @@ taxi_options = sorted(runs["taxi_type"].dropna().unique().tolist())
 
 with st.sidebar:
     st.subheader("Filters")
-    selected_statuses = st.multiselect(
-        "Status", status_options, default=status_options
+    selected_statuses = st.pills(
+        "Status",
+        status_options,
+        selection_mode="multi",
+        default=status_options,
     )
-    selected_taxis = st.multiselect(
-        "Taxi type", taxi_options, default=taxi_options
+    selected_taxis = st.pills(
+        "Taxi type",
+        taxi_options,
+        selection_mode="multi",
+        default=taxi_options,
     )
+
+if not selected_statuses or not selected_taxis:
+    st.info("Select at least one status and one taxi type to display run attempts.")
+    st.stop()
 
 filtered = runs[
     runs["status"].isin(selected_statuses)

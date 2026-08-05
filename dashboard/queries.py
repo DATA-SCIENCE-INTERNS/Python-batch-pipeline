@@ -7,6 +7,35 @@ import streamlit as st
 from dashboard.database import query_dataframe
 
 
+@st.cache_data(ttl="15s", max_entries=5, show_spinner=False)
+def load_dashboard_status() -> pd.DataFrame:
+    return query_dataframe(
+        """
+        WITH latest AS (
+            SELECT run_id, taxi_type, source_year, source_month, status,
+                   started_at, finished_at
+            FROM pipeline.batch_runs
+            ORDER BY run_id DESC
+            LIMIT 1
+        )
+        SELECT latest.*,
+               (SELECT COUNT(*) FROM pipeline.batch_runs
+                WHERE status = 'running')::INT AS running_records,
+               (SELECT COUNT(*) FROM pipeline.batch_runs
+                WHERE status = 'running'
+                  AND started_at < CLOCK_TIMESTAMP() - INTERVAL '6 hours')::INT
+                   AS stale_running_records,
+               (SELECT COUNT(*) FROM pg_stat_activity
+                WHERE application_name = 'nyc_taxi_batch_pipeline')::INT
+                   AS active_pipeline_sessions,
+               (SELECT COUNT(*) FROM pipeline.batch_runs
+                WHERE status = 'failed')::INT AS failed_runs,
+               CLOCK_TIMESTAMP() AS checked_at
+        FROM latest
+        """
+    )
+
+
 @st.cache_data(ttl="2m", max_entries=10, show_spinner=False)
 def load_monthly_summary() -> pd.DataFrame:
     return query_dataframe(
