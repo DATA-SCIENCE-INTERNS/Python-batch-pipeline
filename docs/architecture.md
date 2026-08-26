@@ -9,6 +9,15 @@ curated, rejected, and operational data.
 
 ## Component flow
 
+The report-ready architecture diagram below distinguishes runtime containers,
+persistent data layers, validation outcomes, and the read-only dashboard.
+
+![NYC Taxi Batch Pipeline architecture](../reports/assets/nyc_taxi_pipeline_architecture.png)
+
+Editable/exportable source: [`nyc_taxi_pipeline_architecture.svg`](../reports/assets/nyc_taxi_pipeline_architecture.svg).
+
+### Simplified logical flow
+
 ```mermaid
 flowchart LR
     TLC[NYC TLC] --> DL[Requests downloader]

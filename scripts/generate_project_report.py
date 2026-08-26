@@ -10,6 +10,8 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
+from generate_architecture_diagram import PNG_OUTPUT, build_png
+
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "reports" / "NYC_Taxi_Batch_Pipeline_Project_Report.docx"
@@ -297,29 +299,20 @@ def build_report():
 
     doc.add_heading("3. Solution Architecture", level=1)
     doc.add_heading("3.1 High-Level Data Flow", level=2)
-    add_code(doc, """
-NYC TLC monthly Parquet source
-              |
-              v
-Bronze filesystem (raw, partitioned, checksummed)
-              |
-              v
-PyArrow chunk reader -> Pandas canonical normalization
-              |
-              v
-       Data-quality validation
-          /                 \\
-         v                   v
-Silver validated trips   pipeline.rejected_records
-         |
-         v
-Gold Yellow / Green tables (trip_key primary key)
-         |
-         v
-gold.monthly_summary materialized view
-
-Cross-cutting audit: pipeline.batch_runs + pipeline.file_ingestions
-""")
+    build_png()
+    doc.add_picture(str(PNG_OUTPUT), width=Inches(6.9))
+    caption = doc.add_paragraph(
+        "Figure 1. Logical architecture, deployment boundaries and end-to-end data flow."
+    )
+    caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    caption.runs[0].italic = True
+    caption.runs[0].font.size = Pt(9)
+    doc.add_paragraph(
+        "The architecture separates the on-demand ingestion process from persistent storage "
+        "and read-only reporting. Valid records follow the Bronze-to-Silver-to-Gold path; "
+        "invalid records are quarantined with their rejection reasons. Run metadata and file "
+        "checksums provide operational lineage across every stage."
+    )
     doc.add_heading("3.2 Medallion Layers", level=2)
     add_table(doc, ["Layer", "Storage", "Responsibility"], [
         ("Bronze", "Partitioned Parquet files", "Preserve source data and enable safe replay"),
